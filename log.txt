@@ -1,0 +1,12 @@
+cyrus@Linux:~/Documents/Code/Python/relay$ python3 bot.py 
+<function get at 0x7f75044880d0>
+Traceback (most recent call last):
+  File "bot.py", line 180, in <module>
+    async def get(ctx, *, guild: Union[int, str]):
+  File "/home/cyrus/.local/lib/python3.8/site-packages/discord/ext/commands/core.py", line 1245, in decorator
+    result = command(*args, **kwargs)(func)
+  File "/home/cyrus/.local/lib/python3.8/site-packages/discord/ext/commands/core.py", line 1412, in decorator
+    return cls(func, name=name, **attrs)
+  File "/home/cyrus/.local/lib/python3.8/site-packages/discord/ext/commands/core.py", line 217, in __init__
+    raise TypeError('Callback must be a coroutine.')
+TypeError: Callback must be a coroutine.
