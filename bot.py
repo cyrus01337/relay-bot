@@ -42,6 +42,16 @@ class Connection(object):
     def webhook(self):
         return self.__webhook
 
+    @webhook.getter
+    def get_webhook(self):
+        if self.webhook is None:
+            raise errors.WebhookNotFound()
+        return self.webhook
+
+    @webhook.setter
+    def set_webhook(self, webhook: discord.Webhook):
+        self.__webhook = webhook
+
 
 class RelayBot(commands.Bot):
     def __init__(self, *args, **kwargs):
@@ -56,6 +66,13 @@ class RelayBot(commands.Bot):
         self._ignored_errors = (
             commands.CommandNotFound,
         )
+        self._avatar_bytes = None
+
+        self.loop.create_task(self.__ainit__())
+
+    async def __ainit__(self):
+        await self.wait_until_ready()
+        self._avatar_bytes = await self.user.avatar_url.read()
 
     def _attempt_get(self,
                      identifier: Union[int, str], *,
@@ -99,28 +116,48 @@ class RelayBot(commands.Bot):
     #     return commands.check(predicate)
 
     async def _init_webhooks(self, *channels):
+        webhooks = []
+
         for channel in channels:
             webhooks = await channel.webhooks()
             webhook_found = discord.utils.get(webhooks,
                                               name="Relay",
-                                              user=self.bot.user)
+                                              user=self.user)
 
             if not webhook_found:
-                avatar = await self.user.avatar_url.read()
-                self.__webhook = await self.dest.create_webhook(name="Relay",
-                                                                avatar=avatar)
+                print("k")
+                webhook_found = await channel.create_webhook(
+                    name="Relay",
+                    avatar=self._avatar_bytes
+                )
+            print("l")
+            webhooks.append(webhook_found)
+        return webhooks
 
     async def _connect(self,
                        source: discord.TextChannel,
                        dest: discord.TextChannel):
         # if one point does not exist nor will the other
-        if self._connections.get(dest.id, False):
-            await self._init_webhooks(source, dest)
+        if self._connections.get(dest.id, None) is None:
+            print("g")
+            webhooks = await self._init_webhooks(source, dest)
             source_connection = Connection(source, dest, bot=self)
             dest_connection = Connection(dest, source, bot=self)
+
+            for i, c in enumerate((source_connection, dest_connection)):
+                try:
+                    webhook = webhooks[i]
+                except IndexError:
+                    print("h")
+                    webhook = None
+                finally:
+                    print("i")
+                    c.webhook = webhook
+
             self._connections[source.id] = source_connection
             self._connections[dest.id] = dest_connection
             # self._connections[dest.id] = Connection.invert(source_connection)
+        print("j")
 
     async def _disconnect(self, source: discord.TextChannel):
         try:
@@ -226,6 +263,7 @@ async def connect(ctx,
 
     # chain conditions as checksum to verify connection circumstances
     if not isinstance(channel, discord.TextChannel):
+        print("a")
         channel = bot.get_channel(channel, guild=guild)
 
         if channel is None:
@@ -235,13 +273,18 @@ async def connect(ctx,
             )
 
     if embed is None:
+        print("b")
         if channel == ctx.channel:
+            print("c")
             embed = discord.Embed(title="WIP", description="WIP")
         elif not bot._can_read_write(channel):
+            print("d")
             embed = discord.Embed(title="WIP", description="WIP")
         elif bot._connections.get(ctx.channel.id, None) is not None:
+            print("e")
             embed = discord.Embed(title="WIP", description="WIP")
         else:
+            print("f")
             embed = discord.Embed(
                 title="Success!",
                 description=("You have been connected. You will now receive "

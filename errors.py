@@ -9,6 +9,10 @@ from discord.ext import commands
 #                         f"(ID: {channel.id})")
 
 
+class WebhookNotFound(Exception):
+    pass
+
+
 class GuildNotFound(commands.CommandError):
     def __init__(self):
         self.embed = discord.Embed(
