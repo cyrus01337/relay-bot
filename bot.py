@@ -38,20 +38,6 @@ class Connection(object):
     #             break
     #     return source, dest
 
-    @property
-    def webhook(self):
-        return self.__webhook
-
-    @webhook.getter
-    def get_webhook(self):
-        if self.webhook is None:
-            raise errors.WebhookNotFound()
-        return self.webhook
-
-    @webhook.setter
-    def set_webhook(self, webhook: discord.Webhook):
-        self.__webhook = webhook
-
 
 class RelayBot(commands.Bot):
     def __init__(self, *args, **kwargs):
@@ -115,10 +101,12 @@ class RelayBot(commands.Bot):
     #         return True
     #     return commands.check(predicate)
 
-    async def _init_webhooks(self, *channels):
+    async def _init_webhooks(self,
+                             source: discord.TextChannel,
+                             dest: discord.TextChannel):
         webhooks = []
 
-        for channel in channels:
+        for channel in (source, dest):
             webhooks = await channel.webhooks()
             webhook_found = discord.utils.get(webhooks,
                                               name="Relay",
@@ -141,17 +129,18 @@ class RelayBot(commands.Bot):
         if self._connections.get(dest.id, None) is None:
             print("g")
             webhooks = await self._init_webhooks(source, dest)
+            print(source.name, dest.name)
             source_connection = Connection(source, dest, bot=self)
             dest_connection = Connection(dest, source, bot=self)
 
             for i, c in enumerate((source_connection, dest_connection)):
                 try:
                     webhook = webhooks[i]
+                    print("h", i)
                 except IndexError:
-                    print("h")
+                    print("i", i)
                     webhook = None
                 finally:
-                    print("i")
                     c.webhook = webhook
 
             self._connections[source.id] = source_connection
@@ -171,6 +160,7 @@ class RelayBot(commands.Bot):
         if message.author.bot:
             return
         connection = self._connections.get(message.channel.id, None)
+        print(message.channel.name, message.channel.id, connection)
 
         if connection is not None:
             files = []
