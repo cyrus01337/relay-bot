@@ -2,13 +2,6 @@ import discord
 from discord.ext import commands
 
 
-# potentially redundant - only used in try/except with "pass" statement
-# class RelayConnectionError(Exception):
-#     def __init__(self, channel: discord.TextChannel):
-#         self.message = (f"connection has not been established with channel "
-#                         f"(ID: {channel.id})")
-
-
 class WebhookNotFound(Exception):
     pass
 

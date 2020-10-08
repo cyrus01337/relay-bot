@@ -8,8 +8,6 @@ import errors
 import utils
 
 
-# better system - 1 connection, "source" & "dest" but only send to
-# "dest" from source to make lookup & communication easier
 class Connection(object):
     def __init__(self,
                  source: discord.TextChannel,
@@ -27,20 +25,6 @@ class Connection(object):
     @classmethod
     def invert(cls, connection):
         return cls(connection.dest, connection.source, bot=connection.bot)
-
-    # potentially unnecessary
-    # def resolve(self, *args):
-    #     source = None
-    #     dest = None
-
-    #     for arg in args:
-    #         if arg == self.source:
-    #             source = arg
-    #         elif arg == self.dest:
-    #             dest = arg
-    #         elif None not in (source, dest):
-    #             break
-    #     return source, dest
 
 
 class RelayBot(commands.Bot):
@@ -77,12 +61,6 @@ class RelayBot(commands.Bot):
         else:
             result = discord.utils.get(iterable, name=identifier)
         return result
-
-    # potentially redundant - overhead by only wrapping 1 call
-    # def _get_connection_points(self, channel: discord.TextChannel):
-    #     # can be improved - "channel" already exists as source/dest
-    #     # point, unsure how to solve efficiently
-    #     return self._connections.get(channel.id, None)
 
     def _resolve_identifier(self, ctx: commands.Context):
         guild_in_kwargs = ctx.kwargs.get("guild", False)
@@ -175,13 +153,6 @@ class RelayBot(commands.Bot):
                 avatar_url=message.author.avatar_url,
                 files=files,
                 allowed_mentions=self._allowed_mentions)
-
-        # try:
-        #     connection = self._get_connection_points(message.channel)
-        # except errors.RelayConnectionError:
-        #     pass
-        # else:
-        #     await connection.send(message)
 
     def get_guild(self, identifier: Union[int, str]):
         return self._attempt_get(identifier,
