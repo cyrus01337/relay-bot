@@ -20,6 +20,10 @@ class Connection(object):
         self.dest = dest
         self.bot = bot
 
+    def __repr__(self):
+        return (f"<Connection source={self.source} dest={self.dest} "
+                f"webhook={self.webhook}>")
+
     @classmethod
     def invert(cls, connection):
         return cls(connection.dest, connection.source, bot=connection.bot)
@@ -53,6 +57,8 @@ class RelayBot(commands.Bot):
             commands.CommandNotFound,
         )
         self._avatar_bytes = None
+        self._allowed_mentions = discord.AllowedMentions(everyone=False,
+                                                         roles=False)
 
         self.loop.create_task(self.__ainit__())
 
@@ -102,43 +108,37 @@ class RelayBot(commands.Bot):
     #     return commands.check(predicate)
 
     async def _init_webhooks(self,
-                             source: discord.TextChannel,
-                             dest: discord.TextChannel):
-        webhooks = []
+                             dest: discord.TextChannel,
+                             source: discord.TextChannel):
+        ret = []
 
-        for channel in (source, dest):
+        for channel in (dest, source):
             webhooks = await channel.webhooks()
             webhook_found = discord.utils.get(webhooks,
                                               name="Relay",
                                               user=self.user)
 
             if not webhook_found:
-                print("k")
                 webhook_found = await channel.create_webhook(
                     name="Relay",
                     avatar=self._avatar_bytes
                 )
-            print("l")
-            webhooks.append(webhook_found)
-        return webhooks
+            ret.append(webhook_found)
+        return ret
 
     async def _connect(self,
                        source: discord.TextChannel,
                        dest: discord.TextChannel):
         # if one point does not exist nor will the other
         if self._connections.get(dest.id, None) is None:
-            print("g")
-            webhooks = await self._init_webhooks(source, dest)
-            print(source.name, dest.name)
+            webhooks = await self._init_webhooks(dest, source)
             source_connection = Connection(source, dest, bot=self)
             dest_connection = Connection(dest, source, bot=self)
 
             for i, c in enumerate((source_connection, dest_connection)):
                 try:
                     webhook = webhooks[i]
-                    print("h", i)
                 except IndexError:
-                    print("i", i)
                     webhook = None
                 finally:
                     c.webhook = webhook
@@ -146,7 +146,6 @@ class RelayBot(commands.Bot):
             self._connections[source.id] = source_connection
             self._connections[dest.id] = dest_connection
             # self._connections[dest.id] = Connection.invert(source_connection)
-        print("j")
 
     async def _disconnect(self, source: discord.TextChannel):
         try:
@@ -154,27 +153,28 @@ class RelayBot(commands.Bot):
         except KeyError:
             return
         else:
+            ret = (connection.source, connection.dest)
             self._connections.pop(connection.dest.id)
+        return ret
 
     async def process_connections(self, message: discord.Message):
-        if message.author.bot:
+        prefix = await self.get_prefix(message)
+        if message.author.bot or message.content.startswith(prefix):
             return
         connection = self._connections.get(message.channel.id, None)
-        print(message.channel.name, message.channel.id, connection)
 
         if connection is not None:
             files = []
-            allowed_mentions = discord.AllowedMentions(everyone=False,
-                                                       roles=False)
 
             for attachment in message.attachments:
                 file = await attachment.to_file()
                 files.append(file)
-            await connection.webhook.send(message.content,
-                                          username=message.author.name,
-                                          avatar_url=message.author.avatar_url,
-                                          files=files,
-                                          allowed_mentions=allowed_mentions)
+            await connection.webhook.send(
+                message.content,
+                username=message.author.name,
+                avatar_url=message.author.avatar_url,
+                files=files,
+                allowed_mentions=self._allowed_mentions)
 
         # try:
         #     connection = self._get_connection_points(message.channel)
@@ -200,6 +200,10 @@ class RelayBot(commands.Bot):
 
     async def on_ready(self):
         print(self.user)
+
+    async def on_typing(self, channel, *_):
+        if self._connections.get(channel.id, None) is not None:
+            await channel.trigger_typing()
 
     async def on_message(self, message):
         await self.process_connections(message)
@@ -246,49 +250,52 @@ async def get(ctx, *, guild: Union[int, str]):
 @bot.command()
 async def connect(ctx,
                   guild: Union[int, str],
-                  channel: Union[discord.TextChannel, int, str]):
+                  channel: Union[int, str]):
     _check_existing_guild(ctx)
     embed = None
     guild = bot.get_guild(guild)
+    channel = bot.get_channel(channel, guild=guild)
 
-    # chain conditions as checksum to verify connection circumstances
-    if not isinstance(channel, discord.TextChannel):
-        print("a")
-        channel = bot.get_channel(channel, guild=guild)
-
-        if channel is None:
-            embed = discord.Embed(
-                title="Uh...",
-                description="That channel doesn't seem to exist"
-            )
+    if channel is None:
+        embed = discord.Embed(
+            title="Uh...",
+            description="That channel doesn't seem to exist"
+        )
 
     if embed is None:
-        print("b")
         if channel == ctx.channel:
-            print("c")
             embed = discord.Embed(title="WIP", description="WIP")
         elif not bot._can_read_write(channel):
-            print("d")
             embed = discord.Embed(title="WIP", description="WIP")
         elif bot._connections.get(ctx.channel.id, None) is not None:
-            print("e")
             embed = discord.Embed(title="WIP", description="WIP")
         else:
-            print("f")
-            embed = discord.Embed(
-                title="Success!",
-                description=("You have been connected. You will now receive "
-                             "messages from the channel and can also send "
-                             "messages to it also! Go ahead, start typing!")
-            )
-            await bot._connect(ctx.channel, channel)
+            channels = (ctx.channel, channel)
+            title = "Success!"
+            description = ("You have been connected. You will now receive "
+                           "messages from `#{}` and can also send messages to "
+                           "`#{}` also! Go ahead, start typing!")
+            embed = discord.Embed(title=title,
+                                  description=description.format(*channels))
+
+            await channel.send(embed=discord.Embed(
+                title=title,
+                description=description.format(*channels[::-1])
+            ))
+            await bot._connect(*channels)
     await ctx.send(embed=embed)
 
 
 @bot.command()
 async def disconnect(ctx):
-    await bot._disconnect(ctx)
-    await ctx.send()
+    channels = await bot._disconnect(ctx.channel)
+
+    for channel in channels:
+        await channel.send(embed=discord.Embed(
+            title="Notice",
+            description=("The connection has been severed... You have been "
+                         "disconnected!")
+        ))
 
 
 @bot.command()
@@ -297,6 +304,11 @@ async def disconnect(ctx):
 async def close(ctx):
     await ctx.message.add_reaction("👍")
     await bot.close()
+
+
+@bot.command()
+async def test(ctx, channel: Union[int, str]):
+    await ctx.send(f"{type(channel)}")
 
 
 if __name__ == '__main__':
